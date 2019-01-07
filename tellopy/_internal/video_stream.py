@@ -13,9 +13,14 @@ class VideoStream(object):
         self.wait_first_packet_in_frame = True
         self.ignore_packets = 0
         self.name = 'VideoStream'
+        self.keyframe = 0
+        self.counter = 0
         drone.subscribe(drone.EVENT_CONNECTED, self.__handle_event)
         drone.subscribe(drone.EVENT_DISCONNECTED, self.__handle_event)
         drone.subscribe(drone.EVENT_VIDEO_DATA, self.__handle_event)
+
+    def get_counter(self):
+        return self.counter
 
     def read(self, size):
         self.cond.acquire()
@@ -24,8 +29,13 @@ class VideoStream(object):
                 self.cond.wait(5.0)
             data = bytes()
             while 0 < len(self.queue) and len(data) + len(self.queue[0]) < size:
-                data = data + self.queue[0]
+                newdata = self.queue[0]
+                data = data + newdata[2:]
                 del self.queue[0]
+                if byte(newdata[1]) == 0:
+                    self.counter -= 1
+                if self.keyframe > 0:
+                    self.keyframe -= 1
         finally:
             self.cond.release()
         # returning data of zero length indicates end of stream
@@ -47,11 +57,12 @@ class VideoStream(object):
             self.cond.notifyAll()
             self.cond.release()
         elif event is self.drone.EVENT_VIDEO_DATA:
-            self.log.debug('%s.handle_event(VIDEO_DATA, size=%d)' % (self.name, len(data)))
+            self.log.debug('%s.handle_event(VIDEO_DATA, size=%d)' %
+                           (self.name, len(data)))
             video_data = VideoData(data)
             if 0 < video_data.gap(self.prev_video_data):
                 self.wait_first_packet_in_frame = True
-                
+
             self.prev_video_data = video_data
             if self.wait_first_packet_in_frame and byte(data[1]) != 0:
                 self.ignore_packets += 1
@@ -63,6 +74,13 @@ class VideoStream(object):
             self.wait_first_packet_in_frame = False
 
             self.cond.acquire()
-            self.queue.append(data[2:])
+            if (byte(data[1]) == 0) and ((byte(data[6]) & 0x1f) == 0x05):
+                if self.keyframe > 0:
+                    self.log.info('del frame from %d' % self.keyframe)
+                    del self.queue[self.keyframe:]
+                self.keyframe = len(self.queue)
+            if byte(data[1]) == 0:
+                self.counter += 1
+            self.queue.append(data)
             self.cond.notifyAll()
             self.cond.release()
