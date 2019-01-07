@@ -2,7 +2,7 @@ import sys
 import traceback
 import tellopy
 import av
-import cv2.cv2 as cv2  # for avoidance of pylint error
+import cv2  # for avoidance of pylint error
 import numpy
 import time
 
@@ -19,11 +19,15 @@ def main():
         frame_skip = 300
         while True:
             for frame in container.decode(video=0):
-                if 0 < frame_skip:
-                    frame_skip = frame_skip - 1
+                # if 0 < frame_skip:
+                    #frame_skip = frame_skip - 1
+                if 1 < drone.get_video_stream().get_counter():
+                    print('skip frame %d\n' %
+                          drone.get_video_stream().get_counter())
                     continue
                 start_time = time.time()
-                image = cv2.cvtColor(numpy.array(frame.to_image()), cv2.COLOR_RGB2BGR)
+                image = cv2.cvtColor(numpy.array(
+                    frame.to_image()), cv2.COLOR_RGB2BGR)
                 cv2.imshow('Original', image)
                 cv2.imshow('Canny', cv2.Canny(image, 100, 200))
                 cv2.waitKey(1)
@@ -32,7 +36,6 @@ def main():
                 else:
                     time_base = frame.time_base
                 frame_skip = int((time.time() - start_time)/time_base)
-                    
 
     except Exception as ex:
         exc_type, exc_value, exc_traceback = sys.exc_info()
@@ -41,6 +44,7 @@ def main():
     finally:
         drone.quit()
         cv2.destroyAllWindows()
+
 
 if __name__ == '__main__':
     main()
